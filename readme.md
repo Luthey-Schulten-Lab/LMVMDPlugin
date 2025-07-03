@@ -23,7 +23,7 @@ conda activate vmdplugin
 ```bash
 mkdir build
 cd build
-cmake ..
+cmake -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" -DHDF5_ROOT="$CONDA_PREFIX"
 make && make install    
 ```
 
