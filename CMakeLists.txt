@@ -4,17 +4,44 @@ project(lmplugin VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(HDF5 REQUIRED COMPONENTS CXX HL)
+# Check for required system dependencies
+include(CheckIncludeFileCXX)
+include(CheckCXXCompilerFlag)
 
-find_program(VMD_EXECUTABLE NAMES vmd PATH_SUFFIXES bin DOC "Path to VMD start script")
-if(VMD_EXECUTABLE)
-    file(STRINGS "${VMD_EXECUTABLE}" _VMD_ROOT_DIR REGEX "^[^#]*defaultvmddir[ \t]*=")
-    string(REGEX REPLACE "(^.*=[^\"]*\"?|\"$)" "" _VMD_ROOT_DIR "${_VMD_ROOT_DIR}")
-else()
-    set(_VMD_ROOT_DIR "/usr/local/lib/vmd")
+# Check for C++17 support
+CHECK_CXX_COMPILER_FLAG("-std=c++17" COMPILER_SUPPORTS_CXX17)
+if(NOT COMPILER_SUPPORTS_CXX17)
+    message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++17 support. Please use a different C++ compiler.")
 endif()
 
-set(VMD_ROOT_DIR "${_VMD_ROOT_DIR}" CACHE PATH "Path to VMD runtime directory") 
+# Find HDF5 with fallback options
+find_package(HDF5 COMPONENTS CXX HL)
+if(NOT HDF5_FOUND)
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(HDF5 QUIET hdf5)
+    endif()
+    if(NOT HDF5_FOUND)
+        message(FATAL_ERROR "HDF5 library not found. Please install HDF5 development package.")
+    endif()
+endif()
+
+# Allow user to directly set VMD_ROOT_DIR
+set(VMD_ROOT_DIR "" CACHE PATH "Path to VMD runtime directory")
+
+# Only try to auto-detect if VMD_ROOT_DIR is not set
+if(NOT VMD_ROOT_DIR)
+    find_program(VMD_EXECUTABLE NAMES vmd PATH_SUFFIXES bin DOC "Path to VMD start script")
+    if(VMD_EXECUTABLE)
+        file(STRINGS "${VMD_EXECUTABLE}" _VMD_ROOT_DIR REGEX "^[^#]*defaultvmddir[ \t]*=")
+        string(REGEX REPLACE "(^.*=[^\"]*\"?|\"$)" "" _VMD_ROOT_DIR "${_VMD_ROOT_DIR}")
+        set(VMD_ROOT_DIR "${_VMD_ROOT_DIR}" CACHE PATH "Path to VMD runtime directory" FORCE)
+    else()
+        set(VMD_ROOT_DIR "/usr/local/lib/vmd" CACHE PATH "Path to VMD runtime directory" FORCE)
+    endif()
+endif()
+
+message(STATUS "VMD_ROOT_DIR: ${VMD_ROOT_DIR}")
 
 find_path(VMD_PLUGIN_DIR "pdbplugin.so"
             PATHS 
@@ -47,7 +74,9 @@ if(VMD_PLUGIN_INCLUDE_DIR)
         PROPERTIES 
             PREFIX ""
             SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX}
-            INSTALL_RPATH "${CMAKE_PREFIX_PATH}/lib")
+            INSTALL_RPATH "${CMAKE_PREFIX_PATH}/lib"
+            BUILD_WITH_INSTALL_RPATH TRUE
+            INSTALL_RPATH_USE_LINK_PATH TRUE)
     
     if(WIN32)
         set_target_properties(lmplugin PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
